@@ -16,12 +16,20 @@ import {
   scoreForLanding,
   type ComboState,
 } from '../shared/mechanics';
+import { CharacterSelect } from './CharacterSelect';
+import { AchievementsPanel } from './AchievementsPanel';
+import { ProfileStats } from './ProfileStats';
+import { SettingsPanel } from './SettingsPanel';
+import { HUD } from './HUD';
+import { Leaderboard } from './Leaderboard';
 import type {
   ChallengeDefinition,
   CharacterId,
   GameMode,
   GameSettings,
+  LeaderboardEntry,
   LiveGameState,
+  PlayerProfile,
   ReplayRecording,
 } from '../shared/types';
 
@@ -35,14 +43,43 @@ type RunResult = {
 };
 
 type GameCanvasProps = {
+  view: 'menu' | 'play';
+  menuTab: 'home' | 'characters' | 'achievements' | 'leaderboards' | 'settings';
+  leaderboardScope: 'online' | 'local';
   mode: GameMode;
   character: CharacterId;
   challenge: ChallengeDefinition | null;
+  challengeDefinitions: ChallengeDefinition[];
   settings: GameSettings;
   replay: ReplayRecording | null;
   isPaused: boolean;
   resetToken: number;
+  hasReplay: boolean;
+  liveState: LiveGameState;
+  timeLeft: number | null;
+  profile: PlayerProfile | null;
+  loadingProfile: boolean;
+  unlockedAchievements: string[];
+  pilotName: string;
+  pilotAccent: string;
+  activeUsername: string | null;
+  leaderboardRows: LeaderboardEntry[];
+  localRows: LeaderboardEntry[];
+  leaderboardLoading: boolean;
+  onModeChange: (mode: GameMode) => void;
+  onChallengeSelect: (id: string) => void;
+  onMenuTabChange: (
+    tab: 'home' | 'characters' | 'achievements' | 'leaderboards' | 'settings'
+  ) => void;
+  onLeaderboardScopeChange: (scope: 'online' | 'local') => void;
+  onStartRun: () => void;
+  onStartReplay: () => void;
+  onCharacterSelect: (id: CharacterId) => void;
+  onSettingsChange: (next: GameSettings) => void;
+  onResetData: () => void;
   onState: (state: LiveGameState) => void;
+  onMainMenu: () => void;
+  onRestart: () => void;
   onPauseToggle: () => void;
   onRunEnd: (result: RunResult) => void;
 };
@@ -145,14 +182,41 @@ const createRuntimeState = (mode: GameMode): RuntimeState => {
 };
 
 export const GameCanvas = ({
+  view,
+  menuTab,
+  leaderboardScope,
   mode,
   character,
   challenge,
+  challengeDefinitions,
   settings,
   replay,
   isPaused,
   resetToken,
+  hasReplay,
+  liveState,
+  timeLeft,
+  profile,
+  loadingProfile,
+  unlockedAchievements,
+  pilotName,
+  pilotAccent,
+  activeUsername,
+  leaderboardRows,
+  localRows,
+  leaderboardLoading,
+  onModeChange,
+  onChallengeSelect,
+  onMenuTabChange,
+  onLeaderboardScopeChange,
+  onStartRun,
+  onStartReplay,
+  onCharacterSelect,
+  onSettingsChange,
+  onResetData,
   onState,
+  onMainMenu,
+  onRestart,
   onPauseToggle,
   onRunEnd,
 }: GameCanvasProps) => {
@@ -218,6 +282,9 @@ export const GameCanvas = ({
   );
 
   useEffect(() => {
+    if (view !== 'play') {
+      return;
+    }
     stateRef.current = createRuntimeState(mode);
     replayCursorRef.current = 0;
     recordingRef.current = [];
@@ -231,9 +298,12 @@ export const GameCanvas = ({
       elapsedSeconds: 0,
       modeCompleted: false,
     });
-  }, [mode, resetToken, onState]);
+  }, [mode, resetToken, onState, view]);
 
   useEffect(() => {
+    if (view !== 'play') {
+      return;
+    }
     const onKeyDown = (event: KeyboardEvent): void => {
       const pausePressed =
         event.code === settings.keybindings.pause || event.code === 'Escape';
@@ -331,9 +401,13 @@ export const GameCanvas = ({
     settings.keybindings.jump,
     settings.keybindings.left,
     settings.keybindings.right,
+    view,
   ]);
 
   useEffect(() => {
+    if (view !== 'play') {
+      return;
+    }
     if (!settings.gamepadEnabled) {
       gamepadInputRef.current = {
         left: false,
@@ -394,7 +468,7 @@ export const GameCanvas = ({
         cancelAnimationFrame(rafId);
       }
     };
-  }, [onPauseToggle, settings.gamepadDeadzone, settings.gamepadEnabled]);
+  }, [onPauseToggle, settings.gamepadDeadzone, settings.gamepadEnabled, view]);
 
   const colorMap = useMemo(() => {
     const map: Record<
@@ -416,6 +490,9 @@ export const GameCanvas = ({
   }, [character]);
 
   useEffect(() => {
+    if (view !== 'play') {
+      return;
+    }
     const tick = (time: number): void => {
       const canvas = canvasRef.current;
       if (!canvas) {
@@ -957,106 +1034,335 @@ export const GameCanvas = ({
     colorMap,
     settings.comboTextEnabled,
     settings.screenShakeEnabled,
+    view,
   ]);
 
+  if (view === 'menu') {
+    return (
+      <div className="mx-auto w-full max-w-4xl space-y-3">
+        <header className="rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-4 backdrop-blur-sm">
+          <h1 className="text-3xl font-black tracking-tight text-sky-300 [text-shadow:2px_2px_0_rgba(1,87,155,0.9)]">
+            The Everclimb
+          </h1>
+          <p className="text-sm text-cyan-100/90">
+            Endless vertical platforming with momentum jumps, combos, and
+            rising-floor pressure.
+          </p>
+        </header>
+
+        <section className="rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-3 backdrop-blur-sm">
+          <div className="mb-2 flex flex-wrap gap-2">
+            {(['classic', 'challenge', 'timeattack', 'practice'] as const).map(
+              (entry) => (
+                <button
+                  key={entry}
+                  type="button"
+                  onClick={() => onModeChange(entry)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                    mode === entry
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-900/70 text-cyan-100 ring-1 ring-cyan-200/20 hover:ring-cyan-200/60'
+                  }`}
+                >
+                  {entry}
+                </button>
+              )
+            )}
+          </div>
+
+          {mode === 'challenge' ? (
+            <div className="mt-2 grid gap-2">
+              {challengeDefinitions.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => onChallengeSelect(entry.id)}
+                  className={`rounded-lg px-2 py-1 text-left text-xs ${
+                    challenge?.id === entry.id
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-900/70 text-cyan-100 ring-1 ring-cyan-200/20 hover:ring-cyan-200/60'
+                  }`}
+                >
+                  <div className="font-semibold">{entry.name}</div>
+                  <div className="opacity-80">{entry.description}</div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onStartRun}
+              className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
+            >
+              Start Run
+            </button>
+            <button
+              type="button"
+              onClick={onStartReplay}
+              disabled={!hasReplay}
+              className="rounded-xl border border-cyan-200/20 bg-slate-900/70 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:opacity-50"
+            >
+              Watch Last Replay
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-3 backdrop-blur-sm">
+          <div className="mb-3 flex flex-wrap gap-2">
+            {(
+              [
+                'home',
+                'characters',
+                'achievements',
+                'leaderboards',
+                'settings',
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => onMenuTabChange(tab)}
+                className={`rounded-md px-3 py-1 text-xs font-semibold uppercase ${
+                  menuTab === tab
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-slate-900/70 text-cyan-100 ring-1 ring-cyan-200/20'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          {menuTab === 'home' ? <ProfileStats profile={profile} /> : null}
+          {menuTab === 'characters' ? (
+            <CharacterSelect
+              selected={character}
+              onSelect={onCharacterSelect}
+              bestFloor={profile?.bestFloor ?? 0}
+              disabled={loadingProfile}
+            />
+          ) : null}
+          {menuTab === 'achievements' ? (
+            <AchievementsPanel unlocked={unlockedAchievements} />
+          ) : null}
+          {menuTab === 'leaderboards' ? (
+            <div>
+              <div className="mb-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onLeaderboardScopeChange('online')}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                    leaderboardScope === 'online'
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-900/70 text-cyan-100 ring-1 ring-cyan-200/20'
+                  }`}
+                >
+                  Online
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onLeaderboardScopeChange('local')}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                    leaderboardScope === 'local'
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-900/70 text-cyan-100 ring-1 ring-cyan-200/20'
+                  }`}
+                >
+                  Local
+                </button>
+              </div>
+              <Leaderboard
+                mode={mode}
+                rows={
+                  leaderboardScope === 'online' ? leaderboardRows : localRows
+                }
+                activeUsername={activeUsername}
+                loading={
+                  leaderboardScope === 'online' ? leaderboardLoading : false
+                }
+              />
+            </div>
+          ) : null}
+          {menuTab === 'settings' ? (
+            <SettingsPanel
+              settings={settings}
+              onChange={onSettingsChange}
+              onResetData={onResetData}
+            />
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2">
-      <canvas
-        ref={canvasRef}
-        width={worldConfig.arenaWidth}
-        height={worldConfig.viewportHeight}
-        className="w-full max-w-[420px] rounded-2xl border border-black/10 bg-sky-50 shadow-xl"
-      />
-      {touchDevice ? (
-        <div className="mt-1 grid grid-cols-4 gap-2">
+    <div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[420px_1fr]">
+      <div className="space-y-3">
+        <header className="rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-3 backdrop-blur-sm">
+          <h1 className="text-2xl font-black tracking-tight text-sky-300 [text-shadow:2px_2px_0_rgba(1,87,155,0.9)]">
+            The Everclimb
+          </h1>
+          <p className="text-xs text-cyan-100/85">
+            Climb endlessly, chain floor skips, and outrun the Rising Pulse.
+          </p>
+        </header>
+
+        <HUD
+          mode={mode}
+          score={liveState.score}
+          floor={liveState.floor}
+          combo={liveState.combo}
+          comboTimer={liveState.comboTimer}
+          comboText={liveState.comboText}
+          risingProgress={liveState.risingProgress}
+          timeLeft={timeLeft}
+          modeCompleted={liveState.modeCompleted}
+        />
+
+        <div className="space-y-2">
+          <canvas
+            ref={canvasRef}
+            width={worldConfig.arenaWidth}
+            height={worldConfig.viewportHeight}
+            className="w-full max-w-[420px] rounded-2xl border border-black/10 bg-sky-50 shadow-xl"
+          />
+          {touchDevice ? (
+            <div className="mt-1 grid grid-cols-4 gap-2">
+              <button
+                type="button"
+                onPointerDown={() => {
+                  keysRef.current.left = true;
+                }}
+                onPointerUp={() => {
+                  keysRef.current.left = false;
+                }}
+                onPointerCancel={() => {
+                  keysRef.current.left = false;
+                }}
+                onPointerLeave={() => {
+                  keysRef.current.left = false;
+                }}
+                className="rounded-2xl border border-cyan-100/20 bg-slate-900/80 px-3 py-3 text-sm font-semibold text-cyan-50 shadow-lg"
+                style={{ touchAction: 'none' }}
+              >
+                Left
+              </button>
+              <button
+                type="button"
+                onPointerDown={() => {
+                  stateRef.current.jumpBufferTimer = worldConfig.coyoteWindow;
+                  keysRef.current.jump = true;
+                }}
+                onPointerUp={() => {
+                  keysRef.current.jump = false;
+                  stateRef.current.jumpedThisPress = false;
+                }}
+                onPointerCancel={() => {
+                  keysRef.current.jump = false;
+                  stateRef.current.jumpedThisPress = false;
+                }}
+                onPointerLeave={() => {
+                  keysRef.current.jump = false;
+                  stateRef.current.jumpedThisPress = false;
+                }}
+                className="rounded-2xl border border-amber-200/30 bg-amber-500/80 px-3 py-3 text-sm font-semibold text-white shadow-lg"
+                style={{ touchAction: 'none' }}
+              >
+                Jump
+              </button>
+              <button
+                type="button"
+                onPointerDown={() => {
+                  keysRef.current.right = true;
+                }}
+                onPointerUp={() => {
+                  keysRef.current.right = false;
+                }}
+                onPointerCancel={() => {
+                  keysRef.current.right = false;
+                }}
+                onPointerLeave={() => {
+                  keysRef.current.right = false;
+                }}
+                className="rounded-2xl border border-cyan-100/20 bg-slate-900/80 px-3 py-3 text-sm font-semibold text-cyan-50 shadow-lg"
+                style={{ touchAction: 'none' }}
+              >
+                Right
+              </button>
+              <button
+                type="button"
+                onPointerDown={() => {
+                  keysRef.current.run = true;
+                }}
+                onPointerUp={() => {
+                  keysRef.current.run = false;
+                }}
+                onPointerCancel={() => {
+                  keysRef.current.run = false;
+                }}
+                onPointerLeave={() => {
+                  keysRef.current.run = false;
+                }}
+                className="rounded-2xl border border-emerald-200/30 bg-emerald-600/80 px-3 py-3 text-sm font-semibold text-white shadow-lg"
+                style={{ touchAction: 'none' }}
+              >
+                Run
+              </button>
+            </div>
+          ) : null}
+          {!touchDevice ? (
+            <p className="px-1 text-[11px] font-medium text-slate-600">
+              Move: A/D or Arrow keys. Run: Shift + Left/Right. Jump: W/Up/Space
+              (hold to chain). Pause: {settings.keybindings.pause}.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex gap-2">
           <button
             type="button"
-            onPointerDown={() => {
-              keysRef.current.left = true;
-            }}
-            onPointerUp={() => {
-              keysRef.current.left = false;
-            }}
-            onPointerCancel={() => {
-              keysRef.current.left = false;
-            }}
-            onPointerLeave={() => {
-              keysRef.current.left = false;
-            }}
-            className="rounded-2xl border border-cyan-100/20 bg-slate-900/80 px-3 py-3 text-sm font-semibold text-cyan-50 shadow-lg"
-            style={{ touchAction: 'none' }}
+            onClick={onMainMenu}
+            className="rounded-xl border border-cyan-200/20 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-cyan-100 hover:border-cyan-300/70"
           >
-            Left
+            Main Menu
           </button>
           <button
             type="button"
-            onPointerDown={() => {
-              stateRef.current.jumpBufferTimer = worldConfig.coyoteWindow;
-              keysRef.current.jump = true;
-            }}
-            onPointerUp={() => {
-              keysRef.current.jump = false;
-              stateRef.current.jumpedThisPress = false;
-            }}
-            onPointerCancel={() => {
-              keysRef.current.jump = false;
-              stateRef.current.jumpedThisPress = false;
-            }}
-            onPointerLeave={() => {
-              keysRef.current.jump = false;
-              stateRef.current.jumpedThisPress = false;
-            }}
-            className="rounded-2xl border border-amber-200/30 bg-amber-500/80 px-3 py-3 text-sm font-semibold text-white shadow-lg"
-            style={{ touchAction: 'none' }}
+            onClick={onRestart}
+            className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-500"
           >
-            Jump
+            Restart Run
           </button>
           <button
             type="button"
-            onPointerDown={() => {
-              keysRef.current.right = true;
-            }}
-            onPointerUp={() => {
-              keysRef.current.right = false;
-            }}
-            onPointerCancel={() => {
-              keysRef.current.right = false;
-            }}
-            onPointerLeave={() => {
-              keysRef.current.right = false;
-            }}
-            className="rounded-2xl border border-cyan-100/20 bg-slate-900/80 px-3 py-3 text-sm font-semibold text-cyan-50 shadow-lg"
-            style={{ touchAction: 'none' }}
+            onClick={onPauseToggle}
+            className="rounded-xl border border-cyan-200/20 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-cyan-100 hover:border-cyan-300/70"
           >
-            Right
-          </button>
-          <button
-            type="button"
-            onPointerDown={() => {
-              keysRef.current.run = true;
-            }}
-            onPointerUp={() => {
-              keysRef.current.run = false;
-            }}
-            onPointerCancel={() => {
-              keysRef.current.run = false;
-            }}
-            onPointerLeave={() => {
-              keysRef.current.run = false;
-            }}
-            className="rounded-2xl border border-emerald-200/30 bg-emerald-600/80 px-3 py-3 text-sm font-semibold text-white shadow-lg"
-            style={{ touchAction: 'none' }}
-          >
-            Run
+            {isPaused ? 'Resume' : 'Pause'}
           </button>
         </div>
-      ) : null}
-      {!touchDevice ? (
-        <p className="px-1 text-[11px] font-medium text-slate-600">
-          Move: A/D or Arrow keys. Run: Shift + Left/Right. Jump: W/Up/Space
-          (hold to chain). Pause: {settings.keybindings.pause}.
-        </p>
-      ) : null}
+      </div>
+
+      <div className="space-y-3">
+        <section className="rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-3 backdrop-blur-sm">
+          <p className="text-xs text-cyan-100/85">
+            Pilot:{' '}
+            <span className="font-semibold" style={{ color: pilotAccent }}>
+              {pilotName}
+            </span>
+            {activeUsername ? ` • ${activeUsername}` : ''}
+          </p>
+        </section>
+
+        <Leaderboard
+          mode={mode}
+          rows={leaderboardRows}
+          activeUsername={activeUsername}
+          loading={leaderboardLoading}
+        />
+      </div>
     </div>
   );
 };
