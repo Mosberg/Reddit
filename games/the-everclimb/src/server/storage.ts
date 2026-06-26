@@ -1,6 +1,6 @@
 import { redis } from '@devvit/web/server';
 
-const parseJson = <T>(raw: string | null): T | null => {
+const parseJson = <T>(raw: string | null | undefined): T | null => {
   if (!raw) {
     return null;
   }
