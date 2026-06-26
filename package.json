@@ -1,0 +1,37 @@
+{
+  "name": "node",
+  "version": "1.0.0",
+  "description": "Node",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/username/repo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/username/repo/issues"
+  },
+  "main": "README.md",
+  "scripts": {
+    "install": "npm install"
+  },
+  "author": "Mosberg",
+  "license": "MIT",
+  "dependencies": {
+    "@devvit/start": "^0.13.5",
+    "@devvit/reddit": "^0.13.5",
+    "@hono/node-server": "^2.0.6",
+    "@vitejs/plugin-react": "^6.0.3",
+    "devvit": "^0.13.5",
+    "hono": "^4.12.27",
+    "json": "^11.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.0.1",
+    "eslint": "^10.5.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.8.5",
+    "typescript": "^6.0.3",
+    "prettier-eslint": "^17.1.1",
+    "typescript-eslint": "^8.62.0"
+  }
+}
